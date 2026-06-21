@@ -1,20 +1,18 @@
-import json
 import re
 import time
-import asyncio
-from urllib.parse import urljoin
+import unicodedata
 
 import requests
 from bs4 import BeautifulSoup
+try:
+    from duckduckgo_search import DDGS
+    _DDG_AVAILABLE = True
+except ImportError:
+    _DDG_AVAILABLE = False
 
 BASE = "https://www.hellofresh.fr"
-MENU_URL = f"{BASE}/panier-repas/menu-de-la-semaine"
-
-MENU_ANCHORS = {
-    "familial": "menu-familial",
-    "rapide":   "menu-rapide",
-    "veggie":   "menu-veggie",
-}
+MENUS_URL = f"{BASE}/menus"
+RECIPES_URL = f"{BASE}/recipes"
 
 _HEADERS = {
     "User-Agent": (
@@ -28,137 +26,167 @@ _HEADERS = {
 }
 
 
-def _fetch(url: str, retries: int = 3) -> requests.Response:
-    for attempt in range(retries):
+def _fetch(url: str, params: dict | None = None) -> str:
+    for attempt in range(3):
         try:
-            r = requests.get(url, headers=_HEADERS, timeout=30)
+            r = requests.get(url, headers=_HEADERS, params=params, timeout=30)
             r.raise_for_status()
-            return r
+            return r.text
         except Exception as e:
             print(f"  fetch attempt {attempt+1} failed for {url}: {e}")
-            if attempt < retries - 1:
+            if attempt < 2:
                 time.sleep(3)
-    raise RuntimeError(f"Failed to fetch {url} after {retries} attempts")
+    raise RuntimeError(f"Failed to fetch {url}")
 
 
-def _extract_next_data(html: str) -> dict:
-    """Extract the __NEXT_DATA__ JSON blob embedded in Next.js pages."""
-    tag = BeautifulSoup(html, "html.parser").find("script", {"id": "__NEXT_DATA__"})
-    if tag and tag.string:
-        return json.loads(tag.string)
-    return {}
+def _slugify(text: str) -> str:
+    """Normalize to ASCII, lowercase, spaces to hyphens."""
+    text = unicodedata.normalize("NFKD", text)
+    text = text.encode("ascii", "ignore").decode("ascii")
+    text = re.sub(r"[^\w\s-]", "", text.lower())
+    return re.sub(r"[\s_-]+", " ", text).strip()
 
 
-def _find_recipes_in_json(obj, results=None, depth=0):
-    """Recursively walk the Next.js data tree to find recipe objects."""
-    if results is None:
-        results = []
-    if depth > 15:
-        return results
-
-    if isinstance(obj, dict):
-        # A recipe object typically has slug + name + a link
-        slug = obj.get("slug") or obj.get("id") or ""
-        name = obj.get("name") or obj.get("headline") or obj.get("title") or ""
-        if name and slug and len(name) > 3:
-            url = obj.get("websiteUrl") or obj.get("url") or f"{BASE}/recipes/{slug}"
-            image = ""
-            imgs = obj.get("imagePath") or obj.get("image") or ""
-            if isinstance(imgs, str) and imgs:
-                image = imgs if imgs.startswith("http") else f"https://img.hellofresh.com/f_auto,fl_lossy,q_auto,w_500/hellofresh_s3/{imgs}"
-            elif isinstance(imgs, dict):
-                image = imgs.get("url", "")
-            results.append({
-                "name": name,
-                "slug": slug,
-                "url": url,
-                "image": image,
-                "description": obj.get("description", ""),
-            })
-        for v in obj.values():
-            _find_recipes_in_json(v, results, depth + 1)
-
-    elif isinstance(obj, list):
-        for item in obj:
-            _find_recipes_in_json(item, results, depth + 1)
-
-    return results
-
-
-def _cards_from_html(html: str) -> list[dict]:
-    """Fallback: parse recipe links directly from the page HTML."""
-    soup = BeautifulSoup(html, "html.parser")
+def _extract_menu_cards(html: str) -> list[dict]:
+    """Extract recipe cards from /menus page."""
+    soup = BeautifulSoup(html, "lxml")
     seen, cards = set(), []
 
-    for a in soup.find_all("a", href=re.compile(r"/recipes/")):
-        href = a.get("href", "")
-        url = urljoin(BASE, href)
-        if url in seen:
-            continue
-        seen.add(url)
+    # Recipe names are typically in h3/h4, images have RFR IDs
+    # Try multiple selector strategies
+    name_els = (
+        soup.select("h3, h4")
+        or soup.find_all(["h3", "h4"])
+    )
 
-        slug = href.rstrip("/").split("/")[-1]
-        img = a.find("img")
-        name_el = a.find(["h3", "h4", "h2"])
-        name = name_el.get_text(strip=True) if name_el else ""
-        if not name and img:
-            name = img.get("alt", "")
-        if not name or len(name) < 3:
+    for el in name_els:
+        name = el.get_text(strip=True)
+        if len(name) < 5 or len(name) > 120:
             continue
+        if name in seen:
+            continue
+        # Skip navigation/UI headings
+        if any(w in name.lower() for w in ["menu", "découvr", "commandez", "panier", "recette", "semaine", "plan"]):
+            continue
+
+        seen.add(name)
+
+        # Try to find parent card for image and tags
+        card = el.find_parent(["li", "article", "div", "section"])
+        img = card.find("img") if card else None
+        image_url = ""
+        if img:
+            image_url = img.get("src") or img.get("data-src") or ""
+
+        # Extract tags from badges
+        tags = []
+        if card:
+            for badge in card.find_all(string=re.compile(r"Rapide|Végétar|Épicé|Nouveau|Protéines|Super", re.I)):
+                tag = badge.strip()
+                if tag and len(tag) < 30:
+                    tags.append(tag)
+
+        # Extract time from text
+        time_match = re.search(r"(\d+)\s*min", card.get_text() if card else "", re.I)
+        duration = f"{time_match.group(1)} min" if time_match else ""
 
         cards.append({
             "name": name,
-            "slug": slug,
-            "url": url,
-            "image": img["src"] if img and img.get("src") else "",
-            "description": "",
+            "image": image_url,
+            "tags": tags,
+            "duration": duration,
+            "url": "",  # filled by search step
+            "slug": "",
         })
 
+    print(f"  Extracted {len(cards)} recipe names from /menus")
     return cards
 
 
-def get_all_menus(menu_types: list[str] | None = None) -> dict[str, list[dict]]:
-    if menu_types is None:
-        menu_types = list(MENU_ANCHORS.keys())
+def _search_on_hellofresh(name: str) -> str:
+    """Search HellFresh's own /recipes catalog. Works for indexed recipes."""
+    words = [w for w in _slugify(name).split() if len(w) > 2][:4]
+    query = " ".join(words)
+    if not query:
+        return ""
+    try:
+        html = _fetch(RECIPES_URL, params={"q": query})
+    except Exception:
+        return ""
+    soup = BeautifulSoup(html, "lxml")
+    recipe_links = soup.find_all("a", href=re.compile(r"^/recipes/[a-z]"))
+    name_words = set(_slugify(name).split())
+    best_url, best_score = "", 0
+    for link in recipe_links:
+        href = link.get("href", "")
+        slug_words = set(href.split("/")[-1].split("-")[:-1])
+        score = len(name_words & slug_words)
+        if score > best_score:
+            best_score = score
+            best_url = f"{BASE}{href}"
+    return best_url if best_score >= 2 else ""
 
-    print(f"Fetching {MENU_URL} ...")
-    r = _fetch(MENU_URL)
-    html = r.text
 
-    print(f"  Page fetched ({len(html)} bytes). Extracting data...")
+def _search_via_duckduckgo(name: str) -> str:
+    """Fallback: search DuckDuckGo for the recipe on hellofresh.fr (finds new/unlisted recipes)."""
+    if not _DDG_AVAILABLE:
+        return ""
+    query = f'site:hellofresh.fr/recipes "{name}"'
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=5))
+        for r in results:
+            href = r.get("href", "")
+            if "hellofresh.fr/recipes/" in href and href.count("/") >= 4:
+                return href
+    except Exception as e:
+        print(f"    DuckDuckGo search failed: {e}")
+    return ""
 
-    # Strategy 1: __NEXT_DATA__ JSON
-    next_data = _extract_next_data(html)
-    all_recipes = []
-    if next_data:
-        print("  Found __NEXT_DATA__, searching for recipes...")
-        all_recipes = _find_recipes_in_json(next_data)
-        # Deduplicate
-        seen = set()
-        unique = []
-        for r in all_recipes:
-            if r["slug"] not in seen:
-                seen.add(r["slug"])
-                unique.append(r)
-        all_recipes = unique
-        print(f"  Found {len(all_recipes)} recipes in __NEXT_DATA__")
 
-    # Strategy 2: parse HTML links
-    if not all_recipes:
-        print("  No __NEXT_DATA__ recipes, falling back to HTML parsing...")
-        all_recipes = _cards_from_html(html)
-        print(f"  Found {len(all_recipes)} recipe links in HTML")
+def _search_recipe_url(name: str) -> str:
+    """Find the HellFresh recipe page URL for a given recipe name."""
+    # Try HellFresh catalog first (fast)
+    url = _search_on_hellofresh(name)
+    if url:
+        return url
+    # Fallback: DuckDuckGo (finds new/unlisted recipes)
+    time.sleep(0.5)
+    url = _search_via_duckduckgo(name)
+    if url:
+        print(f"    → Found via DuckDuckGo: {url}")
+    return url
 
-    if not all_recipes:
-        print("  WARNING: No recipes found at all.")
+
+def get_all_menus(max_recipes: int = 60) -> dict[str, list[dict]]:
+    """Returns {"semaine": [recipe_cards]}."""
+    print(f"Fetching {MENUS_URL} ...")
+    html = _fetch(MENUS_URL)
+    print(f"  Got {len(html)} bytes")
+
+    cards = _extract_menu_cards(html)
+    if not cards:
         return {}
 
-    # If we can't distinguish menus, put everything under the default
-    menus = {}
-    for menu_type in menu_types:
-        menus[menu_type] = all_recipes  # same list for now; HF doesn't always separate by anchor
-    return menus
+    # Limit
+    cards = cards[:max_recipes]
+
+    # For each card, try to find its recipe page URL
+    print(f"  Searching recipe pages for {len(cards)} recipes...")
+    for i, card in enumerate(cards):
+        url = _search_recipe_url(card["name"])
+        card["url"] = url
+        if url:
+            card["slug"] = url.rstrip("/").split("/")[-1]
+        if (i + 1) % 10 == 0:
+            print(f"    {i+1}/{len(cards)} done")
+        time.sleep(0.5)  # polite delay
+
+    found = sum(1 for c in cards if c["url"])
+    print(f"  Found recipe pages for {found}/{len(cards)} recipes")
+
+    return {"semaine": cards}
 
 
-def get_all_menus_sync(menu_types: list[str] | None = None) -> dict[str, list[dict]]:
-    return get_all_menus(menu_types)
+def get_all_menus_sync(menu_types: list[str] | None = None, max_recipes: int = 60) -> dict[str, list[dict]]:
+    return get_all_menus(max_recipes=max_recipes)

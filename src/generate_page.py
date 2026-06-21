@@ -24,8 +24,9 @@ def load_config() -> dict:
     with open(cfg_path) as f:
         cfg = yaml.safe_load(f)
     return {
-        "default_menu": cfg.get("default_menu", "familial"),
+        "default_menu": cfg.get("default_menu", "semaine"),
         "adults": int(cfg.get("adults", 4)),
+        "max_recipes": int(cfg.get("max_recipes", 60)),
     }
 
 
@@ -61,7 +62,7 @@ def main():
     # --- Scrape menus ---
     from scraper import get_all_menus_sync
     try:
-        menus_raw = get_all_menus_sync()
+        menus_raw = get_all_menus_sync(max_recipes=cfg.get("max_recipes", 60))
     except Exception as e:
         print(f"ERROR during scraping: {e}")
         menus_raw = {}

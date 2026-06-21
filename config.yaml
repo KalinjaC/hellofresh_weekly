@@ -1,2 +1,3 @@
-default_menu: familial   # familial | rapide | veggie
-adults: 4                # default du slider (2–8)
+default_menu: semaine    # seul menu disponible sans connexion HellFresh
+adults: 4               # default du slider (2–8)
+max_recipes: 60         # nombre de recettes à récupérer depuis /menus
