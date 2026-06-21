@@ -1,135 +1,164 @@
-import asyncio
 import json
 import re
-from playwright.async_api import async_playwright
+import time
+import asyncio
+from urllib.parse import urljoin
 
-MENU_URL = "https://www.hellofresh.fr/panier-repas/menu-de-la-semaine"
+import requests
+from bs4 import BeautifulSoup
 
-MENU_LABELS = {
-    "familial": ["familial", "famille", "family"],
-    "rapide": ["rapide", "quick", "express"],
-    "veggie": ["végétarien", "veggie", "végé"],
+BASE = "https://www.hellofresh.fr"
+MENU_URL = f"{BASE}/panier-repas/menu-de-la-semaine"
+
+MENU_ANCHORS = {
+    "familial": "menu-familial",
+    "rapide":   "menu-rapide",
+    "veggie":   "menu-veggie",
+}
+
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/125.0.0.0 Safari/537.36"
+    ),
+    "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Referer": "https://www.google.fr/",
 }
 
 
-async def _accept_cookies(page):
-    for selector in [
-        "#onetrust-accept-btn-handler",
-        'button[id*="accept"]',
-        'button:text("Accepter")',
-        'button:text("Tout accepter")',
-    ]:
+def _fetch(url: str, retries: int = 3) -> requests.Response:
+    for attempt in range(retries):
         try:
-            await page.click(selector, timeout=3000)
-            await asyncio.sleep(1)
-            return
-        except Exception:
-            pass
+            r = requests.get(url, headers=_HEADERS, timeout=30)
+            r.raise_for_status()
+            return r
+        except Exception as e:
+            print(f"  fetch attempt {attempt+1} failed for {url}: {e}")
+            if attempt < retries - 1:
+                time.sleep(3)
+    raise RuntimeError(f"Failed to fetch {url} after {retries} attempts")
 
 
-async def _extract_cards(page) -> list[dict]:
-    await page.wait_for_load_state("domcontentloaded")
-    await asyncio.sleep(3)
+def _extract_next_data(html: str) -> dict:
+    """Extract the __NEXT_DATA__ JSON blob embedded in Next.js pages."""
+    tag = BeautifulSoup(html, "html.parser").find("script", {"id": "__NEXT_DATA__"})
+    if tag and tag.string:
+        return json.loads(tag.string)
+    return {}
 
-    cards = await page.evaluate("""
-        () => {
-            const results = [];
-            const seen = new Set();
 
-            const candidates = [
-                ...document.querySelectorAll('a[href*="/recipes/"]'),
-                ...document.querySelectorAll('a[href*="/recettes/"]'),
-            ];
+def _find_recipes_in_json(obj, results=None, depth=0):
+    """Recursively walk the Next.js data tree to find recipe objects."""
+    if results is None:
+        results = []
+    if depth > 15:
+        return results
 
-            for (const link of candidates) {
-                const url = link.href;
-                if (seen.has(url)) continue;
-                seen.add(url);
+    if isinstance(obj, dict):
+        # A recipe object typically has slug + name + a link
+        slug = obj.get("slug") or obj.get("id") or ""
+        name = obj.get("name") or obj.get("headline") or obj.get("title") or ""
+        if name and slug and len(name) > 3:
+            url = obj.get("websiteUrl") or obj.get("url") or f"{BASE}/recipes/{slug}"
+            image = ""
+            imgs = obj.get("imagePath") or obj.get("image") or ""
+            if isinstance(imgs, str) and imgs:
+                image = imgs if imgs.startswith("http") else f"https://img.hellofresh.com/f_auto,fl_lossy,q_auto,w_500/hellofresh_s3/{imgs}"
+            elif isinstance(imgs, dict):
+                image = imgs.get("url", "")
+            results.append({
+                "name": name,
+                "slug": slug,
+                "url": url,
+                "image": image,
+                "description": obj.get("description", ""),
+            })
+        for v in obj.values():
+            _find_recipes_in_json(v, results, depth + 1)
 
-                const card = link.closest('li, article, [class*="card"], [class*="Card"]') || link;
-                const img = card.querySelector('img');
-                const nameEl = card.querySelector('h3, h4, h2, [class*="name"], [class*="title"], [class*="Name"]');
-                const descEl = card.querySelector('p, [class*="description"], [class*="tagline"]');
-                const timeEl = card.querySelector('[class*="time"], [class*="Time"], time');
+    elif isinstance(obj, list):
+        for item in obj:
+            _find_recipes_in_json(item, results, depth + 1)
 
-                const name = nameEl ? nameEl.innerText.trim() : '';
-                if (!name || name.length < 3) continue;
+    return results
 
-                results.push({
-                    name,
-                    url,
-                    slug: url.split('/').filter(Boolean).pop(),
-                    description: descEl ? descEl.innerText.trim().slice(0, 200) : '',
-                    image: img ? (img.src || img.dataset.src || '') : '',
-                    time: timeEl ? timeEl.innerText.trim() : '',
-                });
-            }
-            return results;
-        }
-    """)
+
+def _cards_from_html(html: str) -> list[dict]:
+    """Fallback: parse recipe links directly from the page HTML."""
+    soup = BeautifulSoup(html, "html.parser")
+    seen, cards = set(), []
+
+    for a in soup.find_all("a", href=re.compile(r"/recipes/")):
+        href = a.get("href", "")
+        url = urljoin(BASE, href)
+        if url in seen:
+            continue
+        seen.add(url)
+
+        slug = href.rstrip("/").split("/")[-1]
+        img = a.find("img")
+        name_el = a.find(["h3", "h4", "h2"])
+        name = name_el.get_text(strip=True) if name_el else ""
+        if not name and img:
+            name = img.get("alt", "")
+        if not name or len(name) < 3:
+            continue
+
+        cards.append({
+            "name": name,
+            "slug": slug,
+            "url": url,
+            "image": img["src"] if img and img.get("src") else "",
+            "description": "",
+        })
+
     return cards
 
 
-async def _click_menu_tab(page, menu_type: str) -> bool:
-    labels = MENU_LABELS.get(menu_type, [menu_type])
-    for label in labels:
-        for selector in [
-            f'a:text-matches("{label}", "i")',
-            f'button:text-matches("{label}", "i")',
-            f'[role="tab"]:text-matches("{label}", "i")',
-            f'li:text-matches("{label}", "i")',
-        ]:
-            try:
-                await page.click(selector, timeout=3000)
-                await asyncio.sleep(2)
-                return True
-            except Exception:
-                pass
-    return False
-
-
-async def get_all_menus(menu_types: list[str] | None = None) -> dict[str, list[dict]]:
+def get_all_menus(menu_types: list[str] | None = None) -> dict[str, list[dict]]:
     if menu_types is None:
-        menu_types = list(MENU_LABELS.keys())
+        menu_types = list(MENU_ANCHORS.keys())
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            locale="fr-FR",
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
-        )
-        page = await context.new_page()
+    print(f"Fetching {MENU_URL} ...")
+    r = _fetch(MENU_URL)
+    html = r.text
 
-        print(f"Loading {MENU_URL} ...")
-        await page.goto(MENU_URL, wait_until="domcontentloaded", timeout=60000)
-        await _accept_cookies(page)
-        await asyncio.sleep(4)
+    print(f"  Page fetched ({len(html)} bytes). Extracting data...")
 
-        menus: dict[str, list[dict]] = {}
+    # Strategy 1: __NEXT_DATA__ JSON
+    next_data = _extract_next_data(html)
+    all_recipes = []
+    if next_data:
+        print("  Found __NEXT_DATA__, searching for recipes...")
+        all_recipes = _find_recipes_in_json(next_data)
+        # Deduplicate
+        seen = set()
+        unique = []
+        for r in all_recipes:
+            if r["slug"] not in seen:
+                seen.add(r["slug"])
+                unique.append(r)
+        all_recipes = unique
+        print(f"  Found {len(all_recipes)} recipes in __NEXT_DATA__")
 
-        for menu_type in menu_types:
-            print(f"Scraping menu: {menu_type}")
-            clicked = await _click_menu_tab(page, menu_type)
-            if not clicked:
-                # Try anchor-based navigation
-                anchor = f"menu-{menu_type}"
-                await page.goto(f"{MENU_URL}#{anchor}", wait_until="domcontentloaded")
-                await asyncio.sleep(3)
+    # Strategy 2: parse HTML links
+    if not all_recipes:
+        print("  No __NEXT_DATA__ recipes, falling back to HTML parsing...")
+        all_recipes = _cards_from_html(html)
+        print(f"  Found {len(all_recipes)} recipe links in HTML")
 
-            cards = await _extract_cards(page)
-            if cards:
-                menus[menu_type] = cards
-                print(f"  → {len(cards)} recipes found")
-            else:
-                print(f"  → No recipes found for '{menu_type}'")
+    if not all_recipes:
+        print("  WARNING: No recipes found at all.")
+        return {}
 
-        await browser.close()
-        return menus
+    # If we can't distinguish menus, put everything under the default
+    menus = {}
+    for menu_type in menu_types:
+        menus[menu_type] = all_recipes  # same list for now; HF doesn't always separate by anchor
+    return menus
 
 
 def get_all_menus_sync(menu_types: list[str] | None = None) -> dict[str, list[dict]]:
-    return asyncio.run(get_all_menus(menu_types))
+    return get_all_menus(menu_types)
