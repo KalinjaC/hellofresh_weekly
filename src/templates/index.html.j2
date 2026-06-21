@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Menu HellFresh · {{ week_label }}</title>
+  <meta name="description" content="Menu HellFresh de la semaine avec fiches recettes et liste de courses." />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#98c240" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="HellFresh" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { hf: '#98c240', 'hf-dark': '#7aa832' }
+        }
+      }
+    }
+  </script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .tab-active { border-bottom: 3px solid #98c240; color: #98c240; font-weight: 600; }
+    .accordion-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+    .accordion-content.open { max-height: 2000px; }
+    .step-num {
+      min-width: 2rem; min-height: 2rem;
+      background: #98c240; color: white;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-weight: bold; font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans">
+
+  <!-- Header -->
+  <header class="bg-white shadow-sm sticky top-0 z-50">
+    <div class="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div>
+        <h1 class="text-xl font-bold text-hf">🍽️ HellFresh</h1>
+        <p class="text-xs text-gray-400">{{ week_label }}</p>
+      </div>
+      <span class="text-xs text-gray-400">Mis à jour {{ generated_at }}</span>
+    </div>
+  </header>
+
+  <main class="max-w-2xl mx-auto px-4 pb-16">
+
+    <!-- Menu Tabs -->
+    <div class="flex border-b border-gray-200 mt-4 overflow-x-auto gap-4" id="menu-tabs">
+      {% for menu_type, menu_data in menus.items() %}
+      <button
+        class="py-2 px-3 text-sm whitespace-nowrap text-gray-500 capitalize border-b-2 border-transparent transition-colors {% if menu_type == default_menu %}tab-active{% endif %}"
+        data-menu="{{ menu_type }}"
+        onclick="switchMenu('{{ menu_type }}')"
+      >
+        {% if menu_type == 'familial' %}👨‍👩‍👧 Familial
+        {% elif menu_type == 'rapide' %}⚡ Rapide
+        {% elif menu_type == 'veggie' %}🥦 Végétarien
+        {% else %}{{ menu_type | title }}{% endif %}
+      </button>
+      {% endfor %}
+    </div>
+
+    <!-- Menu Sections -->
+    {% for menu_type, menu_data in menus.items() %}
+    <section id="menu-{{ menu_type }}" class="menu-section {% if menu_type != default_menu %}hidden{% endif %}">
+
+      <!-- Recipes -->
+      <h2 class="text-lg font-semibold mt-6 mb-3 text-gray-700">📋 Recettes</h2>
+
+      {% if menu_data.recipes %}
+      <div class="space-y-3">
+        {% for recipe in menu_data.recipes %}
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+
+          <!-- Recipe header (clickable accordion) -->
+          <button
+            class="w-full text-left p-4 flex items-center gap-3 accordion-trigger"
+            onclick="toggleAccordion(this)"
+          >
+            {% if recipe.image %}
+            <img
+              src="{{ recipe.image }}"
+              alt="{{ recipe.name }}"
+              class="w-16 h-16 rounded-lg object-cover flex-shrink-0"
+              loading="lazy"
+              onerror="this.style.display='none'"
+            />
+            {% else %}
+            <div class="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 text-2xl">🍳</div>
+            {% endif %}
+            <div class="flex-1 min-w-0">
+              <h3 class="font-semibold text-gray-800 text-sm leading-tight">{{ recipe.name }}</h3>
+              {% if recipe.times %}
+              <p class="text-xs text-gray-400 mt-1">🕐 {{ recipe.times | join(' · ') }}</p>
+              {% endif %}
+            </div>
+            <svg class="w-5 h-5 text-gray-400 flex-shrink-0 transition-transform accordion-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+
+          <!-- Accordion content -->
+          <div class="accordion-content">
+            <div class="px-4 pb-4 border-t border-gray-100">
+
+              <!-- Tabs: Ingredients / Steps -->
+              <div class="flex gap-3 mt-3 mb-3 text-sm">
+                <button
+                  class="recipe-tab-btn font-medium text-hf border-b-2 border-hf pb-1"
+                  onclick="switchRecipeTab(this, 'ingredients')"
+                  data-tab="ingredients"
+                >Ingrédients</button>
+                <button
+                  class="recipe-tab-btn font-medium text-gray-400 pb-1"
+                  onclick="switchRecipeTab(this, 'steps')"
+                  data-tab="steps"
+                >Étapes</button>
+              </div>
+
+              <!-- Ingredients panel -->
+              <div class="recipe-panel" data-panel="ingredients">
+                {% if recipe.ingredients %}
+                <ul class="space-y-1">
+                  {% for ing in recipe.ingredients %}
+                  <li class="flex items-baseline gap-2 text-sm">
+                    <span class="text-hf">•</span>
+                    <span class="ingredient-item"
+                      data-amount="{{ ing.amount or '' }}"
+                      data-unit="{{ ing.unit or '' }}"
+                      data-name="{{ ing.name }}"
+                      data-base="{{ recipe.base_servings }}"
+                    >{{ ing.raw }}</span>
+                  </li>
+                  {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-sm text-gray-400">Ingrédients non disponibles.</p>
+                {% endif %}
+              </div>
+
+              <!-- Steps panel -->
+              <div class="recipe-panel hidden" data-panel="steps">
+                {% if recipe.steps %}
+                <ol class="space-y-3 mt-1">
+                  {% for step in recipe.steps %}
+                  <li class="flex gap-3 text-sm">
+                    <span class="step-num">{{ loop.index }}</span>
+                    <span class="leading-relaxed">{{ step }}</span>
+                  </li>
+                  {% endfor %}
+                </ol>
+                {% else %}
+                <p class="text-sm text-gray-400">
+                  Étapes non disponibles.
+                  <a href="{{ recipe.url }}" target="_blank" class="text-hf underline">Voir sur HellFresh</a>
+                </p>
+                {% endif %}
+              </div>
+
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-sm text-gray-400 bg-white rounded-xl p-4 shadow-sm">Aucune recette trouvée pour ce menu.</p>
+      {% endif %}
+
+      <!-- Shopping List -->
+      <div class="mt-8">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-gray-700">🛒 Liste de courses</h2>
+          <button onclick="clearChecked('{{ menu_type }}')" class="text-xs text-gray-400 underline">
+            Tout décocher
+          </button>
+        </div>
+
+        <!-- Adults Slider -->
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm text-gray-600">Nombre d'adultes</span>
+            <span class="font-bold text-hf text-lg adults-display" id="adults-display-{{ menu_type }}">{{ adults }}</span>
+          </div>
+          <input
+            type="range" min="2" max="8" value="{{ adults }}" step="1"
+            class="w-full accent-hf"
+            id="adults-slider-{{ menu_type }}"
+            oninput="updateAdults(this, '{{ menu_type }}', {{ adults }})"
+          />
+          <div class="flex justify-between text-xs text-gray-300 mt-1">
+            <span>2</span><span>4</span><span>6</span><span>8</span>
+          </div>
+        </div>
+
+        <!-- Shopping list by category -->
+        {% if menu_data.shopping_list %}
+        <div class="space-y-4" id="shopping-{{ menu_type }}">
+          {% for category, items in menu_data.shopping_list.items() %}
+          <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div class="px-4 py-2 bg-gray-50 border-b border-gray-100">
+              <span class="text-sm font-medium text-gray-600">{{ category }}</span>
+            </div>
+            <ul class="px-4 py-2 space-y-2">
+              {% for item in items %}
+              <li class="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  class="w-4 h-4 accent-hf rounded shop-check"
+                  id="item-{{ menu_type }}-{{ loop.index }}-{{ category | replace(' ', '_') }}"
+                  onchange="saveChecked('{{ menu_type }}')"
+                />
+                <label
+                  for="item-{{ menu_type }}-{{ loop.index }}-{{ category | replace(' ', '_') }}"
+                  class="text-sm cursor-pointer flex-1 shop-item"
+                  data-name="{{ item.name }}"
+                  data-display="{{ item.display }}"
+                >{{ item.display }}</label>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-gray-400 bg-white rounded-xl p-4 shadow-sm">Liste de courses non disponible.</p>
+        {% endif %}
+      </div>
+
+    </section>
+    {% endfor %}
+
+  </main>
+
+  <!-- Embedded data for JS -->
+  <script>
+    const MENUS_DATA = {{ menus_json }};
+    const DEFAULT_ADULTS = {{ adults_json }};
+    const DEFAULT_MENU = "{{ default_menu }}";
+  </script>
+
+  <script>
+    // --- Menu tab switching ---
+    function switchMenu(menuType) {
+      document.querySelectorAll('.menu-section').forEach(s => s.classList.add('hidden'));
+      document.getElementById('menu-' + menuType).classList.remove('hidden');
+      document.querySelectorAll('#menu-tabs button').forEach(b => {
+        b.classList.remove('tab-active');
+        b.style.borderBottomColor = '';
+        b.style.color = '';
+        b.style.fontWeight = '';
+      });
+      const activeBtn = document.querySelector(`[data-menu="${menuType}"]`);
+      if (activeBtn) activeBtn.classList.add('tab-active');
+    }
+
+    // --- Accordion ---
+    function toggleAccordion(btn) {
+      const content = btn.nextElementSibling;
+      const arrow = btn.querySelector('.accordion-arrow');
+      const isOpen = content.classList.contains('open');
+      content.classList.toggle('open', !isOpen);
+      if (arrow) arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
+    }
+
+    // --- Recipe tabs (ingredients / steps) ---
+    function switchRecipeTab(btn, tabName) {
+      const card = btn.closest('.accordion-content');
+      card.querySelectorAll('.recipe-tab-btn').forEach(b => {
+        b.classList.remove('text-hf', 'border-b-2', 'border-hf');
+        b.classList.add('text-gray-400');
+      });
+      btn.classList.add('text-hf', 'border-b-2', 'border-hf');
+      btn.classList.remove('text-gray-400');
+      card.querySelectorAll('.recipe-panel').forEach(p => {
+        p.classList.toggle('hidden', p.dataset.panel !== tabName);
+      });
+    }
+
+    // --- Adults slider & ingredient scaling ---
+    function updateAdults(slider, menuType, baseAdults) {
+      const newAdults = parseInt(slider.value);
+      const display = document.getElementById('adults-display-' + menuType);
+      if (display) display.textContent = newAdults;
+
+      // Scale ingredient amounts in recipe cards
+      const section = document.getElementById('menu-' + menuType);
+      section.querySelectorAll('.ingredient-item').forEach(el => {
+        const amount = parseFloat(el.dataset.amount);
+        const unit = el.dataset.unit;
+        const name = el.dataset.name;
+        const base = parseFloat(el.dataset.base) || 2;
+        if (!isNaN(amount) && amount > 0) {
+          const scaled = Math.round((amount / base) * newAdults * 10) / 10;
+          const amtStr = scaled % 1 === 0 ? scaled.toFixed(0) : scaled.toFixed(1);
+          el.textContent = unit ? `${amtStr} ${unit} ${name}` : `${amtStr} ${name}`;
+        }
+      });
+
+      // Scale shopping list items
+      updateShoppingList(menuType, newAdults);
+
+      // Save preference
+      localStorage.setItem('hf_adults', newAdults);
+    }
+
+    function updateShoppingList(menuType, adults) {
+      const menuData = MENUS_DATA[menuType];
+      if (!menuData || !menuData.recipes) return;
+
+      const section = document.getElementById('shopping-' + menuType);
+      if (!section) return;
+
+      // Re-build aggregated quantities from embedded data
+      const aggregated = {};
+      menuData.recipes.forEach(recipe => {
+        const base = recipe.base_servings || 2;
+        const scale = adults / base;
+        (recipe.ingredients || []).forEach(ing => {
+          if (!ing.name) return;
+          const key = ing.name.toLowerCase();
+          if (!aggregated[key]) aggregated[key] = { name: ing.name, unit: ing.unit || '', total: 0, hasAmount: false };
+          if (ing.amount) {
+            aggregated[key].total += ing.amount * scale;
+            aggregated[key].hasAmount = true;
+          }
+        });
+      });
+
+      // Update visible labels
+      section.querySelectorAll('.shop-item').forEach(label => {
+        const name = label.dataset.name;
+        const key = name.toLowerCase();
+        const agg = aggregated[key];
+        if (agg && agg.hasAmount && agg.total > 0) {
+          const t = agg.total;
+          const amtStr = t % 1 === 0 ? t.toFixed(0) : t.toFixed(1);
+          label.textContent = `${name} (${amtStr}${agg.unit ? ' ' + agg.unit : ''})`;
+        }
+      });
+    }
+
+    // --- Checkbox persistence ---
+    function saveChecked(menuType) {
+      const section = document.getElementById('shopping-' + menuType);
+      const checked = [...section.querySelectorAll('.shop-check')]
+        .map((cb, i) => ({ i, checked: cb.checked }));
+      localStorage.setItem('hf_checked_' + menuType, JSON.stringify(checked));
+    }
+
+    function loadChecked(menuType) {
+      const raw = localStorage.getItem('hf_checked_' + menuType);
+      if (!raw) return;
+      try {
+        const saved = JSON.parse(raw);
+        const section = document.getElementById('shopping-' + menuType);
+        const checkboxes = section.querySelectorAll('.shop-check');
+        saved.forEach(({ i, checked }) => {
+          if (checkboxes[i]) checkboxes[i].checked = checked;
+        });
+      } catch (e) {}
+    }
+
+    function clearChecked(menuType) {
+      const section = document.getElementById('shopping-' + menuType);
+      section.querySelectorAll('.shop-check').forEach(cb => cb.checked = false);
+      localStorage.removeItem('hf_checked_' + menuType);
+    }
+
+    // --- Init ---
+    document.addEventListener('DOMContentLoaded', () => {
+      // Restore adults preference
+      const savedAdults = parseInt(localStorage.getItem('hf_adults')) || DEFAULT_ADULTS;
+      Object.keys(MENUS_DATA).forEach(menuType => {
+        const slider = document.getElementById('adults-slider-' + menuType);
+        if (slider) {
+          slider.value = savedAdults;
+          updateAdults(slider, menuType, DEFAULT_ADULTS);
+        }
+        loadChecked(menuType);
+      });
+    });
+
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js').catch(() => {});
+    }
+  </script>
+</body>
+</html>

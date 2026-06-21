@@ -1,0 +1,2 @@
+default_menu: familial   # familial | rapide | veggie
+adults: 4                # default du slider (2–8)
