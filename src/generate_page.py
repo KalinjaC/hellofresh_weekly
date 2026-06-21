@@ -90,23 +90,31 @@ def main():
         print(f"\nFetching recipes for menu '{menu_type}' ({len(cards)} dishes)...")
         urls = [c["url"] for c in cards if c.get("url")]
         try:
-            recipes = scrape_recipes_sync(urls)
+            scraped = scrape_recipes_sync(urls)
         except Exception as e:
             print(f"  Warning: recipe scraping failed for '{menu_type}': {e}")
-            recipes = []
+            scraped = []
 
-        shopping = build_shopping_list(recipes, adults)
+        # Build URL → recipe map so card index always matches recipe data
+        url_to_recipe = {r["url"]: r for r in scraped if r.get("url")}
 
-        # Attach thumbnail from card scrape if recipe image missing
-        for i, recipe in enumerate(recipes):
-            if not recipe.get("image") and i < len(cards):
-                recipe["image"] = cards[i].get("image", "")
+        # Merge card + recipe into unified items (recipe=None if not found)
+        items = []
+        for card in cards:
+            recipe = url_to_recipe.get(card.get("url", ""))
+            # Use card image as fallback when recipe image is missing
+            if recipe and not recipe.get("image"):
+                recipe["image"] = card.get("image", "")
+            items.append({
+                "name": card["name"],
+                "image": card.get("image", ""),
+                "tags": card.get("tags", []),
+                "duration": card.get("duration", ""),
+                "url": card.get("url", ""),
+                "recipe": recipe,  # None when recipe page not found
+            })
 
-        menus_full[menu_type] = {
-            "cards": cards,
-            "recipes": recipes,
-            "shopping_list": shopping,
-        }
+        menus_full[menu_type] = {"items": items}
 
     # --- Render template ---
     env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)))
@@ -116,12 +124,11 @@ def main():
     generated_at = datetime.now().strftime("%d/%m/%Y à %H:%M")
 
     html = template.render(
-        menus=menus_full,
-        default_menu=default_menu,
+        items=menus_full.get("semaine", {}).get("items", []),
         adults=adults,
         week_label=week_label,
         generated_at=generated_at,
-        menus_json=json.dumps(menus_full, ensure_ascii=False),
+        items_json=json.dumps(menus_full.get("semaine", {}).get("items", []), ensure_ascii=False),
         adults_json=adults,
     )
 

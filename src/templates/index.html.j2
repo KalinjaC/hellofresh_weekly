@@ -1,408 +1,410 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Menu HellFresh · {{ week_label }}</title>
-  <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#98c240" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-title" content="HellFresh" />
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="theme-color" content="#98c240"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-title" content="HellFresh"/>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>tailwind.config = { theme: { extend: { colors: { hf: '#98c240' } } } }</script>
+  <script>tailwind.config={theme:{extend:{colors:{hf:'#98c240','hf-dark':'#7aa832'}}}}</script>
   <style>
-    .accordion-content { max-height: 0; overflow: hidden; transition: max-height 0.35s ease; }
-    .accordion-content.open { max-height: 3000px; }
-    .step-num { min-width:1.75rem; min-height:1.75rem; background:#98c240; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:.8rem; flex-shrink:0; }
-    .recipe-card.selected { border-color: #98c240; box-shadow: 0 0 0 2px #98c24040; }
+    .card-selected { outline: 2.5px solid #98c240; box-shadow: 0 0 0 4px #98c24025; }
+    .accordion-body { display: none; }
+    .accordion-body.open { display: block; }
+    .step-num { min-width:1.6rem;min-height:1.6rem;background:#98c240;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.75rem;flex-shrink:0; }
+    .tag-veggie  { background:#dcfce7;color:#16a34a; }
+    .tag-epice   { background:#fee2e2;color:#dc2626; }
+    .tag-rapide  { background:#fef9c3;color:#ca8a04; }
+    .tag-default { background:#f3f4f6;color:#6b7280; }
+    input[type=range] { accent-color:#98c240; }
   </style>
 </head>
-<body class="bg-gray-50 text-gray-800 font-sans">
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen">
 
-  <!-- Header -->
-  <header class="bg-white shadow-sm sticky top-0 z-50">
-    <div class="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
-      <div>
-        <h1 class="text-xl font-bold text-hf">🍽️ HellFresh</h1>
-        <p class="text-xs text-gray-400">{{ week_label }}</p>
-      </div>
-      <div class="text-right">
-        <p class="text-xs font-semibold text-hf" id="selected-count">0 sélectionnée(s)</p>
-        <p class="text-xs text-gray-400">{{ generated_at }}</p>
-      </div>
+<!-- ═══ HEADER ═══ -->
+<header class="bg-white shadow-sm sticky top-0 z-50">
+  <div class="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div>
+      <h1 class="text-xl font-bold text-hf">🍽️ HellFresh</h1>
+      <p class="text-xs text-gray-400">{{ week_label }} · {{ generated_at }}</p>
     </div>
-  </header>
-
-  <main class="max-w-2xl mx-auto px-4 pb-20">
-
-    <!-- Nav pills -->
-    <div class="flex gap-2 mt-4 mb-2">
-      <button onclick="showSection('recipes')" id="tab-recipes"
-        class="px-4 py-1.5 rounded-full text-sm font-medium bg-hf text-white transition-colors">
-        📋 Recettes
-      </button>
-      <button onclick="showSection('shopping')" id="tab-shopping"
-        class="px-4 py-1.5 rounded-full text-sm font-medium bg-gray-200 text-gray-600 transition-colors">
-        🛒 Liste de courses
+    <div class="text-right">
+      <p class="text-sm font-semibold text-hf" id="sel-count">0 sélectionnée(s)</p>
+      <button onclick="showTab('shop')"
+        class="text-xs bg-hf text-white px-3 py-1 rounded-full mt-1 hidden" id="shop-btn">
+        Voir liste de courses →
       </button>
     </div>
+  </div>
+  <!-- Tabs -->
+  <div class="max-w-2xl mx-auto px-4 flex gap-1 pb-2">
+    <button id="tab-recipes" onclick="showTab('recipes')"
+      class="px-4 py-1.5 rounded-full text-sm font-medium bg-hf text-white">
+      📋 Recettes ({{ items|length }})
+    </button>
+    <button id="tab-shop" onclick="showTab('shop')"
+      class="px-4 py-1.5 rounded-full text-sm font-medium bg-gray-100 text-gray-500">
+      🛒 Liste de courses
+    </button>
+  </div>
+</header>
 
-    <!-- ============ RECETTES ============ -->
-    <section id="section-recipes">
+<main class="max-w-2xl mx-auto px-3 pb-20">
 
-      {% set menu = menus['semaine'] %}
-      {% set cards = menu.cards %}
-      {% set recipes = menu.recipes %}
+<!-- ═══ RECETTES ═══ -->
+<div id="pane-recipes">
+  <p class="text-xs text-gray-400 my-3 px-1">
+    Coche les recettes pour générer la liste de courses automatiquement.
+  </p>
 
-      {% if not cards %}
-      <div class="bg-white rounded-xl p-6 text-center text-gray-400 mt-4">
-        <p class="text-4xl mb-2">😕</p>
-        <p>Aucune recette trouvée cette semaine.</p>
+  {% if not items %}
+  <div class="bg-white rounded-2xl p-8 text-center text-gray-400 mt-4">
+    <p class="text-4xl mb-3">😕</p>
+    <p>Aucune recette trouvée cette semaine.</p>
+  </div>
+  {% else %}
+
+  <div class="grid grid-cols-2 gap-3 sm:gap-4">
+    {% for item in items %}
+    {% set idx = loop.index0 %}
+    <div class="recipe-card bg-white rounded-2xl overflow-hidden shadow-sm border border-transparent transition-all"
+         id="card-{{ idx }}" data-idx="{{ idx }}">
+
+      <!-- Photo + checkbox overlay -->
+      <div class="relative">
+        {% if item.image %}
+        <img src="{{ item.image }}" alt="{{ item.name }}"
+          class="w-full aspect-square object-cover"
+          loading="lazy" onerror="this.parentElement.classList.add('bg-gray-100'); this.style.display='none'"/>
+        {% else %}
+        <div class="w-full aspect-square bg-gray-100 flex items-center justify-center text-4xl">🍳</div>
+        {% endif %}
+
+        <!-- Checkbox badge -->
+        <label class="absolute top-2 right-2 cursor-pointer"
+               for="chk-{{ idx }}" title="Sélectionner">
+          <input type="checkbox" id="chk-{{ idx }}" class="sr-only recipe-check"
+                 onchange="onCheck({{ idx }}, this.checked)"/>
+          <span class="flex items-center justify-center w-7 h-7 rounded-full border-2 border-white shadow-md transition-all bg-white/80 check-icon" id="icon-{{ idx }}">
+            <svg class="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+            </svg>
+          </span>
+        </label>
+
+        <!-- Veggie badge overlay -->
+        {% if item.tags and ('végétar' in (item.tags|join(' '))|lower or 'veggie' in (item.tags|join(' '))|lower) %}
+        <span class="absolute top-2 left-2 bg-green-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">🥦 Végé</span>
+        {% endif %}
       </div>
-      {% else %}
 
-      <p class="text-xs text-gray-400 mb-3">
-        Coche les recettes que tu veux cuisiner → la liste de courses se met à jour.
-      </p>
+      <!-- Card body -->
+      <div class="p-3">
+        <h3 class="font-semibold text-sm leading-tight line-clamp-2 mb-1">{{ item.name }}</h3>
 
-      <!-- Recipe cards list -->
-      <div class="space-y-2" id="recipe-list">
+        {% if item.recipe and item.recipe.name and item.recipe.name != item.name %}
+        <p class="text-xs text-gray-400 line-clamp-1 mb-1">{{ item.recipe.name }}</p>
+        {% endif %}
 
-        {% for card in cards %}
-        {% set recipe = recipes[loop.index0] if loop.index0 < recipes|length else None %}
-        <div
-          class="recipe-card bg-white rounded-xl border-2 border-transparent transition-all overflow-hidden"
-          data-idx="{{ loop.index0 }}"
-        >
-          <!-- Card header -->
-          <div class="flex items-center gap-3 p-3">
-            <!-- Checkbox -->
-            <input type="checkbox" class="recipe-check w-5 h-5 accent-hf rounded flex-shrink-0"
-              id="check-{{ loop.index0 }}"
-              onchange="onRecipeCheck({{ loop.index0 }}, this.checked)"
-            />
-            <!-- Thumbnail -->
-            {% if card.image %}
-            <img src="{{ card.image }}" alt="{{ card.name }}"
-              class="w-14 h-14 rounded-lg object-cover flex-shrink-0"
-              loading="lazy" onerror="this.style.display='none'" />
-            {% else %}
-            <div class="w-14 h-14 rounded-lg bg-gray-100 flex items-center justify-center text-2xl flex-shrink-0">🍳</div>
-            {% endif %}
-            <!-- Name + meta -->
-            <div class="flex-1 min-w-0" onclick="toggleAccordion({{ loop.index0 }})">
-              <p class="font-semibold text-sm leading-tight">{{ card.name }}</p>
-              <div class="flex flex-wrap gap-1 mt-1">
-                {% if card.duration %}<span class="text-xs text-gray-400">🕐 {{ card.duration }}</span>{% endif %}
-                {% for tag in card.tags[:3] %}
-                <span class="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{{ tag }}</span>
-                {% endfor %}
-                {% if not card.url %}
-                <span class="text-xs bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded">Nouvelle recette</span>
-                {% endif %}
-              </div>
-            </div>
-            <!-- Expand arrow -->
-            {% if recipe and (recipe.ingredients or recipe.steps) %}
-            <button onclick="toggleAccordion({{ loop.index0 }})" class="flex-shrink-0 text-gray-400 px-1">
-              <svg class="w-4 h-4 transition-transform" id="arrow-{{ loop.index0 }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-              </svg>
-            </button>
-            {% endif %}
-          </div>
+        <!-- Time + tags row -->
+        <div class="flex flex-wrap items-center gap-1 mt-1.5">
+          {% if item.duration %}
+          <span class="text-xs text-gray-500 font-medium">🕐 {{ item.duration }}</span>
+          {% elif item.recipe and item.recipe.times %}
+          <span class="text-xs text-gray-500 font-medium">🕐 {{ item.recipe.times[0] }}</span>
+          {% endif %}
 
-          <!-- Accordion: recipe details -->
-          <div class="accordion-content" id="accordion-{{ loop.index0 }}">
-            <div class="px-4 pb-4 border-t border-gray-100">
-
-              {% if recipe and (recipe.ingredients or recipe.steps) %}
-              <!-- Sub-tabs -->
-              <div class="flex gap-4 mt-3 mb-3 text-sm border-b border-gray-100 pb-2">
-                <button class="rtab font-medium text-hf" onclick="switchTab({{ loop.index0 }}, 'ing', this)" data-active="true">Ingrédients</button>
-                <button class="rtab text-gray-400" onclick="switchTab({{ loop.index0 }}, 'steps', this)">Étapes</button>
-              </div>
-
-              <!-- Ingredients -->
-              <div id="panel-ing-{{ loop.index0 }}">
-                {% if recipe.ingredients %}
-                <ul class="space-y-1">
-                  {% for ing in recipe.ingredients %}
-                  <li class="flex items-baseline gap-2 text-sm">
-                    <span class="text-hf flex-shrink-0">•</span>
-                    <span class="ingredient-item"
-                      data-amount="{{ ing.amount or '' }}"
-                      data-unit="{{ ing.unit or '' }}"
-                      data-name="{{ ing.name }}"
-                      data-base="{{ recipe.base_servings }}">{{ ing.raw }}</span>
-                  </li>
-                  {% endfor %}
-                </ul>
-                {% else %}
-                <p class="text-sm text-gray-400">Ingrédients non disponibles.</p>
-                {% endif %}
-              </div>
-
-              <!-- Steps -->
-              <div id="panel-steps-{{ loop.index0 }}" class="hidden">
-                {% if recipe.steps %}
-                <ol class="space-y-3">
-                  {% for step in recipe.steps %}
-                  <li class="flex gap-3 text-sm">
-                    <span class="step-num">{{ loop.index }}</span>
-                    <span class="leading-relaxed">{{ step }}</span>
-                  </li>
-                  {% endfor %}
-                </ol>
-                {% else %}
-                <p class="text-sm text-gray-400">
-                  Étapes non disponibles.
-                  {% if card.url %}<a href="{{ card.url }}" target="_blank" class="text-hf underline">Voir sur HellFresh →</a>{% endif %}
-                </p>
-                {% endif %}
-              </div>
-
-              {% else %}
-              <!-- Recipe not found in catalog -->
-              <div class="mt-3 text-sm text-gray-500">
-                <p>Fiche recette non encore disponible (nouvelle recette).</p>
-                {% if card.url %}
-                <a href="{{ card.url }}" target="_blank" class="text-hf underline">Voir sur HellFresh →</a>
-                {% else %}
-                <a href="https://www.hellofresh.fr/recipes?q={{ card.name | urlencode }}"
-                   target="_blank" class="text-hf underline">Chercher sur HellFresh →</a>
-                {% endif %}
-              </div>
-              {% endif %}
-            </div>
-          </div>
+          {% for tag in item.tags[:2] %}
+          {% set tl = tag|lower %}
+          {% if 'végétar' in tl or 'veggie' in tl %}
+          <span class="text-xs tag-veggie px-1.5 py-0.5 rounded-full">{{ tag }}</span>
+          {% elif 'épicé' in tl or 'piment' in tl %}
+          <span class="text-xs tag-epice px-1.5 py-0.5 rounded-full">🌶 {{ tag }}</span>
+          {% elif 'rapide' in tl %}
+          <span class="text-xs tag-rapide px-1.5 py-0.5 rounded-full">⚡ {{ tag }}</span>
+          {% else %}
+          <span class="text-xs tag-default px-1.5 py-0.5 rounded-full">{{ tag }}</span>
+          {% endif %}
+          {% endfor %}
         </div>
-        {% endfor %}
+
+        <!-- Expand ingredients button -->
+        {% if item.recipe and item.recipe.ingredients %}
+        <button onclick="toggleDetails({{ idx }})"
+          class="mt-2 w-full text-left text-xs text-hf font-medium flex items-center justify-between border-t border-gray-100 pt-2">
+          <span>Ingrédients & étapes</span>
+          <svg id="arr-{{ idx }}" class="w-3.5 h-3.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
+        {% elif item.url %}
+        <a href="{{ item.url }}" target="_blank"
+           class="mt-2 block text-xs text-hf border-t border-gray-100 pt-2">
+          Voir la recette →
+        </a>
+        {% else %}
+        <a href="https://www.hellofresh.fr/recipes?q={{ item.name | urlencode }}"
+           target="_blank" class="mt-2 block text-xs text-hf border-t border-gray-100 pt-2">
+          Rechercher →
+        </a>
+        {% endif %}
+      </div>
+
+      <!-- Accordion details (spans full width of card) -->
+      {% if item.recipe and (item.recipe.ingredients or item.recipe.steps) %}
+      <div class="accordion-body border-t border-gray-100 bg-gray-50" id="details-{{ idx }}">
+        <!-- sub-tabs -->
+        <div class="flex border-b border-gray-100 px-3">
+          <button class="detail-tab py-2 mr-4 text-xs font-semibold text-hf border-b-2 border-hf"
+                  onclick="switchDetailTab({{ idx }},'ing',this)">Ingrédients</button>
+          {% if item.recipe.steps %}
+          <button class="detail-tab py-2 text-xs text-gray-400"
+                  onclick="switchDetailTab({{ idx }},'steps',this)">Étapes</button>
+          {% endif %}
+        </div>
+
+        <!-- Ingredients panel -->
+        <div id="det-ing-{{ idx }}" class="px-3 py-2">
+          <ul class="space-y-1.5">
+            {% for ing in item.recipe.ingredients %}
+            <li class="flex items-start gap-1.5 text-xs">
+              <span class="text-hf mt-0.5">•</span>
+              <span class="ingredient-item"
+                data-amount="{{ ing.amount or '' }}"
+                data-unit="{{ ing.unit or '' }}"
+                data-name="{{ ing.name }}"
+                data-base="{{ item.recipe.base_servings }}">{{ ing.raw }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <!-- Steps panel -->
+        {% if item.recipe.steps %}
+        <div id="det-steps-{{ idx }}" class="px-3 py-2 hidden">
+          <ol class="space-y-2.5">
+            {% for step in item.recipe.steps %}
+            <li class="flex gap-2 text-xs">
+              <span class="step-num">{{ loop.index }}</span>
+              <span class="leading-relaxed text-gray-700">{{ step }}</span>
+            </li>
+            {% endfor %}
+          </ol>
+        </div>
+        {% endif %}
 
       </div>
       {% endif %}
-    </section>
 
-    <!-- ============ LISTE DE COURSES ============ -->
-    <section id="section-shopping" class="hidden">
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
 
-      <!-- Adults slider -->
-      <div class="bg-white rounded-xl shadow-sm p-4 mt-4 mb-4">
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-sm text-gray-600">Nombre d'adultes</span>
-          <span class="font-bold text-hf text-lg" id="adults-display">{{ adults }}</span>
-        </div>
-        <input type="range" min="2" max="8" value="{{ adults }}" step="1"
-          class="w-full accent-hf" id="adults-slider"
-          oninput="updateAdults(this)" />
-        <div class="flex justify-between text-xs text-gray-300 mt-1">
-          <span>2</span><span>4</span><span>6</span><span>8</span>
-        </div>
-      </div>
+<!-- ═══ LISTE DE COURSES ═══ -->
+<div id="pane-shop" class="hidden">
 
-      <div id="shopping-empty" class="bg-white rounded-xl p-6 text-center text-gray-400">
-        <p class="text-3xl mb-2">☝️</p>
-        <p class="text-sm">Sélectionne des recettes pour générer la liste de courses.</p>
-      </div>
+  <!-- Adults slider -->
+  <div class="bg-white rounded-2xl shadow-sm p-4 mt-4 mb-4">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-sm font-medium text-gray-700">Nombre de personnes</span>
+      <span class="text-xl font-bold text-hf" id="adults-val">{{ adults }}</span>
+    </div>
+    <input type="range" min="2" max="8" value="{{ adults }}" step="1" id="adults-slider"
+           class="w-full" oninput="onAdults(this)"/>
+    <div class="flex justify-between text-xs text-gray-300 mt-1 px-0.5">
+      <span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span>
+    </div>
+  </div>
 
-      <div id="shopping-content" class="hidden">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Articles</h2>
-          <button onclick="clearCheckedShop()" class="text-xs text-gray-400 underline">Tout décocher</button>
-        </div>
-        <div id="shopping-list-container" class="space-y-4"></div>
-      </div>
-    </section>
+  <!-- Empty state -->
+  <div id="shop-empty" class="bg-white rounded-2xl p-8 text-center text-gray-400">
+    <p class="text-4xl mb-3">☝️</p>
+    <p class="text-sm">Sélectionne des recettes dans l'onglet Recettes<br>pour générer ta liste de courses.</p>
+    <button onclick="showTab('recipes')" class="mt-4 text-sm text-hf underline">
+      Aller aux recettes →
+    </button>
+  </div>
 
-  </main>
+  <!-- Shopping list -->
+  <div id="shop-list" class="hidden">
+    <div class="flex items-center justify-between mb-3 px-1">
+      <p class="text-sm text-gray-500"><span id="shop-recipe-count">0</span> recette(s) sélectionnée(s)</p>
+      <button onclick="clearShop()" class="text-xs text-gray-400 underline">Tout décocher</button>
+    </div>
+    <div id="shop-items" class="bg-white rounded-2xl shadow-sm overflow-hidden divide-y divide-gray-50"></div>
+  </div>
+</div>
 
-  <!-- Embedded data -->
-  <script>
-    const RECIPES_DATA = {{ menus_json | tojson }};
-    const DEFAULT_ADULTS = {{ adults_json }};
-  </script>
+</main>
 
-  <script>
-    // ---- State ----
-    let selectedIndices = new Set();
-    let currentAdults = parseInt(localStorage.getItem('hf_adults')) || DEFAULT_ADULTS;
-    document.getElementById('adults-slider').value = currentAdults;
-    document.getElementById('adults-display').textContent = currentAdults;
+<!-- ═══ DATA ═══ -->
+<script>
+  const ITEMS = {{ items_json }};
+  let adults = parseInt(localStorage.getItem('hf_adults') || '{{ adults_json }}');
+  let selected = new Set(JSON.parse(localStorage.getItem('hf_sel') || '[]'));
+  const shopChecked = JSON.parse(localStorage.getItem('hf_shop_checked') || '{}');
+</script>
+<script>
+// ── Tabs ──────────────────────────────────────────────────────────
+function showTab(name) {
+  ['recipes','shop'].forEach(t => {
+    document.getElementById('pane-' + (t==='shop'?'shop':'recipes')).classList.toggle('hidden', t!==name);
+    const btn = document.getElementById('tab-' + t);
+    btn.className = t === name
+      ? 'px-4 py-1.5 rounded-full text-sm font-medium bg-hf text-white'
+      : 'px-4 py-1.5 rounded-full text-sm font-medium bg-gray-100 text-gray-500';
+  });
+  if (name === 'shop') renderShop();
+}
 
-    // ---- Section nav ----
-    function showSection(name) {
-      document.getElementById('section-recipes').classList.toggle('hidden', name !== 'recipes');
-      document.getElementById('section-shopping').classList.toggle('hidden', name !== 'shopping');
-      document.getElementById('tab-recipes').className = name === 'recipes'
-        ? 'px-4 py-1.5 rounded-full text-sm font-medium bg-hf text-white transition-colors'
-        : 'px-4 py-1.5 rounded-full text-sm font-medium bg-gray-200 text-gray-600 transition-colors';
-      document.getElementById('tab-shopping').className = name === 'shopping'
-        ? 'px-4 py-1.5 rounded-full text-sm font-medium bg-hf text-white transition-colors'
-        : 'px-4 py-1.5 rounded-full text-sm font-medium bg-gray-200 text-gray-600 transition-colors';
-      if (name === 'shopping') renderShoppingList();
-    }
+// ── Recipe selection ──────────────────────────────────────────────
+function onCheck(idx, checked) {
+  const card = document.getElementById('card-' + idx);
+  const icon = document.getElementById('icon-' + idx);
+  if (checked) {
+    selected.add(idx);
+    card.classList.add('card-selected');
+    icon.className = 'flex items-center justify-center w-7 h-7 rounded-full border-2 border-hf shadow-md bg-hf check-icon';
+    icon.querySelector('svg').classList.replace('text-gray-300','text-white');
+  } else {
+    selected.delete(idx);
+    card.classList.remove('card-selected');
+    icon.className = 'flex items-center justify-center w-7 h-7 rounded-full border-2 border-white shadow-md bg-white/80 check-icon';
+    icon.querySelector('svg').classList.replace('text-white','text-gray-300');
+  }
+  const n = selected.size;
+  document.getElementById('sel-count').textContent = n + ' sélectionnée(s)';
+  document.getElementById('shop-btn').classList.toggle('hidden', n === 0);
+  localStorage.setItem('hf_sel', JSON.stringify([...selected]));
+}
 
-    // ---- Accordion ----
-    function toggleAccordion(idx) {
-      const acc = document.getElementById('accordion-' + idx);
-      const arrow = document.getElementById('arrow-' + idx);
-      const open = acc.classList.contains('open');
-      acc.classList.toggle('open', !open);
-      if (arrow) arrow.style.transform = open ? '' : 'rotate(180deg)';
-    }
+// ── Accordion details ─────────────────────────────────────────────
+function toggleDetails(idx) {
+  const body = document.getElementById('details-' + idx);
+  const arr  = document.getElementById('arr-' + idx);
+  const open = body.classList.contains('open');
+  body.classList.toggle('open', !open);
+  if (arr) arr.style.transform = open ? '' : 'rotate(180deg)';
+}
 
-    // ---- Recipe sub-tabs ----
-    function switchTab(idx, panel, btn) {
-      ['ing', 'steps'].forEach(p => {
-        document.getElementById('panel-' + p + '-' + idx)?.classList.toggle('hidden', p !== panel);
-      });
-      btn.closest('.flex').querySelectorAll('.rtab').forEach(b => {
-        b.classList.toggle('text-hf', b === btn);
-        b.classList.toggle('font-medium', b === btn);
-        b.classList.toggle('text-gray-400', b !== btn);
-      });
-    }
+function switchDetailTab(idx, panel, btn) {
+  ['ing','steps'].forEach(p => {
+    const el = document.getElementById('det-' + p + '-' + idx);
+    if (el) el.classList.toggle('hidden', p !== panel);
+  });
+  btn.closest('.flex').querySelectorAll('.detail-tab').forEach(b => {
+    const active = b === btn;
+    b.className = active
+      ? 'detail-tab py-2 mr-4 text-xs font-semibold text-hf border-b-2 border-hf'
+      : 'detail-tab py-2 mr-4 text-xs text-gray-400';
+  });
+}
 
-    // ---- Recipe selection ----
-    function onRecipeCheck(idx, checked) {
-      const card = document.querySelector('[data-idx="' + idx + '"]');
-      card.classList.toggle('selected', checked);
-      card.classList.toggle('border-transparent', !checked);
-      if (checked) selectedIndices.add(idx);
-      else selectedIndices.delete(idx);
-      document.getElementById('selected-count').textContent =
-        selectedIndices.size + ' sélectionnée(s)';
-      saveSelection();
-    }
-
-    function saveSelection() {
-      localStorage.setItem('hf_selected', JSON.stringify([...selectedIndices]));
-    }
-
-    function loadSelection() {
-      try {
-        const saved = JSON.parse(localStorage.getItem('hf_selected') || '[]');
-        saved.forEach(idx => {
-          const cb = document.getElementById('check-' + idx);
-          if (cb) { cb.checked = true; onRecipeCheck(idx, true); }
-        });
-      } catch(e) {}
-    }
-
-    // ---- Shopping list generation ----
-    function getSelectedRecipes() {
-      const menuData = RECIPES_DATA['semaine'];
-      const recipes = menuData ? menuData.recipes : [];
-      return [...selectedIndices].map(i => recipes[i]).filter(Boolean);
-    }
-
-    function renderShoppingList() {
-      const recipes = getSelectedRecipes();
-      const empty = document.getElementById('shopping-empty');
-      const content = document.getElementById('shopping-content');
-
-      if (recipes.length === 0) {
-        empty.classList.remove('hidden');
-        content.classList.add('hidden');
-        return;
+// ── Shopping list ─────────────────────────────────────────────────
+function getAggregated() {
+  const agg = {};
+  [...selected].forEach(idx => {
+    const item = ITEMS[idx];
+    if (!item || !item.recipe || !item.recipe.ingredients) return;
+    const base = item.recipe.base_servings || 2;
+    const scale = adults / base;
+    item.recipe.ingredients.forEach(ing => {
+      if (!ing.name) return;
+      const key = ing.name.toLowerCase().trim();
+      if (!agg[key]) agg[key] = { name: ing.name, unit: ing.unit||'', total: 0, hasAmt: false };
+      if (ing.amount && !isNaN(ing.amount)) {
+        agg[key].total += ing.amount * scale;
+        agg[key].hasAmt = true;
       }
-      empty.classList.add('hidden');
-      content.classList.remove('hidden');
-
-      // Aggregate ingredients
-      const aggregated = {};
-      recipes.forEach(recipe => {
-        const base = recipe.base_servings || 2;
-        const scale = currentAdults / base;
-        (recipe.ingredients || []).forEach(ing => {
-          if (!ing.name) return;
-          const key = ing.name.toLowerCase().trim();
-          if (!aggregated[key]) {
-            aggregated[key] = { name: ing.name, unit: ing.unit || '', total: 0, hasAmount: false };
-          }
-          if (ing.amount) {
-            aggregated[key].total += ing.amount * scale;
-            aggregated[key].hasAmount = true;
-          }
-        });
-      });
-
-      // Format display
-      const items = Object.values(aggregated).map(a => {
-        let display = a.name;
-        if (a.hasAmount && a.total > 0) {
-          const t = Math.round(a.total * 10) / 10;
-          const ts = t % 1 === 0 ? t.toFixed(0) : t.toFixed(1);
-          display = a.name + ' (' + ts + (a.unit ? ' ' + a.unit : '') + ')';
-        }
-        return { name: a.name, display };
-      }).sort((a, b) => a.name.localeCompare(b.name));
-
-      const container = document.getElementById('shopping-list-container');
-      const saved = JSON.parse(localStorage.getItem('hf_shop_checked') || '{}');
-      container.innerHTML = '';
-
-      const ul = document.createElement('div');
-      ul.className = 'bg-white rounded-xl shadow-sm overflow-hidden';
-      ul.innerHTML = items.map((item, i) => `
-        <label class="flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 cursor-pointer hover:bg-gray-50" for="si-${i}">
-          <input type="checkbox" id="si-${i}" class="w-4 h-4 accent-hf shop-check" ${saved[item.name] ? 'checked' : ''}
-            onchange="saveShopChecked('${item.name.replace(/'/g,"\\'")}', this.checked)" />
-          <span class="text-sm flex-1 ${saved[item.name] ? 'line-through text-gray-300' : ''}" id="sl-${i}">${item.display}</span>
-        </label>
-      `).join('');
-      container.appendChild(ul);
-    }
-
-    function saveShopChecked(name, checked) {
-      const saved = JSON.parse(localStorage.getItem('hf_shop_checked') || '{}');
-      saved[name] = checked;
-      localStorage.setItem('hf_shop_checked', JSON.stringify(saved));
-      // Strike through
-      document.querySelectorAll('[id^="sl-"]').forEach(el => {
-        const cb = el.previousElementSibling;
-        el.classList.toggle('line-through', cb.checked);
-        el.classList.toggle('text-gray-300', cb.checked);
-      });
-    }
-
-    function clearCheckedShop() {
-      localStorage.removeItem('hf_shop_checked');
-      document.querySelectorAll('.shop-check').forEach(cb => { cb.checked = false; });
-      document.querySelectorAll('[id^="sl-"]').forEach(el => {
-        el.classList.remove('line-through', 'text-gray-300');
-      });
-    }
-
-    // ---- Adults slider ----
-    function updateAdults(slider) {
-      currentAdults = parseInt(slider.value);
-      document.getElementById('adults-display').textContent = currentAdults;
-      localStorage.setItem('hf_adults', currentAdults);
-      // Scale ingredient labels in open accordions
-      document.querySelectorAll('.ingredient-item').forEach(el => {
-        const amount = parseFloat(el.dataset.amount);
-        const base = parseFloat(el.dataset.base) || 2;
-        const unit = el.dataset.unit;
-        const name = el.dataset.name;
-        if (!isNaN(amount) && amount > 0) {
-          const s = Math.round((amount / base) * currentAdults * 10) / 10;
-          el.textContent = (s % 1 === 0 ? s.toFixed(0) : s.toFixed(1)) + (unit ? ' ' + unit : '') + ' ' + name;
-        }
-      });
-      if (!document.getElementById('section-shopping').classList.contains('hidden')) {
-        renderShoppingList();
-      }
-    }
-
-    // ---- Init ----
-    document.addEventListener('DOMContentLoaded', () => {
-      loadSelection();
     });
+  });
+  return agg;
+}
 
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('service-worker.js').catch(() => {});
+function renderShop() {
+  const empty = document.getElementById('shop-empty');
+  const list  = document.getElementById('shop-list');
+  document.getElementById('shop-recipe-count').textContent = selected.size;
+
+  if (selected.size === 0) {
+    empty.classList.remove('hidden');
+    list.classList.add('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+  list.classList.remove('hidden');
+
+  const agg = getAggregated();
+  const items = Object.values(agg).sort((a,b) => a.name.localeCompare(b.name, 'fr'));
+
+  const saved = JSON.parse(localStorage.getItem('hf_shop_checked') || '{}');
+  document.getElementById('shop-items').innerHTML = items.map((item, i) => {
+    const amt = item.hasAmt && item.total > 0
+      ? (() => { const t = Math.round(item.total*10)/10; return (t%1===0?t.toFixed(0):t.toFixed(1)) + (item.unit?' '+item.unit:''); })()
+      : '';
+    const display = amt ? `${item.name} <span class="text-gray-400">(${amt})</span>` : item.name;
+    const checked = !!saved[item.name];
+    return `
+      <label class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 ${checked?'opacity-50':''}"
+             id="row-${i}" for="si-${i}">
+        <input type="checkbox" id="si-${i}" class="w-4 h-4 shop-check" ${checked?'checked':''}
+               onchange="toggleShopItem('${item.name.replace(/'/g,"\\'")}', ${i}, this.checked)"/>
+        <span class="text-sm flex-1 ${checked?'line-through text-gray-400':''}" id="sl-${i}">${display}</span>
+      </label>`;
+  }).join('');
+}
+
+function toggleShopItem(name, i, checked) {
+  const saved = JSON.parse(localStorage.getItem('hf_shop_checked')||'{}');
+  saved[name] = checked;
+  localStorage.setItem('hf_shop_checked', JSON.stringify(saved));
+  const row = document.getElementById('row-' + i);
+  const lbl = document.getElementById('sl-' + i);
+  row.classList.toggle('opacity-50', checked);
+  lbl.classList.toggle('line-through', checked);
+  lbl.classList.toggle('text-gray-400', checked);
+}
+
+function clearShop() {
+  localStorage.removeItem('hf_shop_checked');
+  renderShop();
+}
+
+// ── Adults slider ─────────────────────────────────────────────────
+function onAdults(slider) {
+  adults = parseInt(slider.value);
+  document.getElementById('adults-val').textContent = adults;
+  localStorage.setItem('hf_adults', adults);
+  // Scale visible ingredient labels
+  document.querySelectorAll('.ingredient-item').forEach(el => {
+    const a = parseFloat(el.dataset.amount), b = parseFloat(el.dataset.base)||2;
+    if (!isNaN(a) && a > 0) {
+      const s = Math.round(a/b*adults*10)/10;
+      el.textContent = (s%1===0?s.toFixed(0):s.toFixed(1))+(el.dataset.unit?' '+el.dataset.unit:'')+' '+el.dataset.name;
     }
-  </script>
+  });
+  if (!document.getElementById('pane-shop').classList.contains('hidden')) renderShop();
+}
+
+// ── Init ──────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  // Restore adults
+  document.getElementById('adults-slider').value = adults;
+  document.getElementById('adults-val').textContent = adults;
+
+  // Restore selections
+  selected.forEach(idx => {
+    const cb = document.getElementById('chk-' + idx);
+    if (cb) { cb.checked = true; onCheck(idx, true); }
+  });
+});
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('service-worker.js').catch(()=>{});
+</script>
 </body>
 </html>
