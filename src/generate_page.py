@@ -29,6 +29,28 @@ def load_config() -> dict:
     }
 
 
+def _write_fallback_page(output_dir: Path, reason: str):
+    """Generates a minimal error page so GitHub Pages always has something to serve."""
+    output_dir.mkdir(exist_ok=True)
+    now = datetime.now().strftime("%d/%m/%Y à %H:%M")
+    html = f"""<!DOCTYPE html>
+<html lang="fr"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Menu HellFresh — Erreur</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head><body class="bg-gray-50 flex items-center justify-center min-h-screen">
+<div class="text-center p-8">
+  <div class="text-6xl mb-4">🍽️</div>
+  <h1 class="text-2xl font-bold text-gray-700 mb-2">Menu indisponible</h1>
+  <p class="text-gray-500 mb-4">{reason}</p>
+  <p class="text-xs text-gray-300">Dernière tentative : {now}</p>
+  <p class="text-xs text-gray-300 mt-2">Le menu sera automatiquement remis à jour samedi prochain.</p>
+</div>
+</body></html>"""
+    (output_dir / "index.html").write_text(html, encoding="utf-8")
+    print(f"Fallback page written to {output_dir / 'index.html'}")
+
+
 def main():
     cfg = load_config()
     default_menu = cfg["default_menu"]
@@ -38,11 +60,19 @@ def main():
 
     # --- Scrape menus ---
     from scraper import get_all_menus_sync
-    menus_raw = get_all_menus_sync()
+    try:
+        menus_raw = get_all_menus_sync()
+    except Exception as e:
+        print(f"ERROR during scraping: {e}")
+        menus_raw = {}
 
     if not menus_raw:
-        print("ERROR: No menus scraped. Aborting.")
-        sys.exit(1)
+        print("No menus scraped — generating fallback page.")
+        _write_fallback_page(OUTPUT_DIR, "Impossible de récupérer le menu HellFresh cette semaine.")
+        # Copy static files so PWA still works
+        for f in STATIC_DIR.glob("*"):
+            (OUTPUT_DIR / f.name).write_bytes(f.read_bytes())
+        return  # Exit cleanly so GitHub Actions deploys the fallback
 
     # Ensure default menu is first (or present)
     if default_menu not in menus_raw:
@@ -58,7 +88,11 @@ def main():
     for menu_type, cards in menus_raw.items():
         print(f"\nFetching recipes for menu '{menu_type}' ({len(cards)} dishes)...")
         urls = [c["url"] for c in cards if c.get("url")]
-        recipes = scrape_recipes_sync(urls)
+        try:
+            recipes = scrape_recipes_sync(urls)
+        except Exception as e:
+            print(f"  Warning: recipe scraping failed for '{menu_type}': {e}")
+            recipes = []
 
         shopping = build_shopping_list(recipes, adults)
 

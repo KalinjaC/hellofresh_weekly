@@ -2,15 +2,24 @@ name: Generate HellFresh Weekly Page
 
 on:
   schedule:
-    - cron: '0 7 * * 6'   # Samedi 09:00 heure de Paris (UTC+2 été / UTC+1 hiver)
-  workflow_dispatch:        # Déclenchement manuel depuis l'UI GitHub
+    - cron: '0 7 * * 6'   # Samedi 09:00 Paris (UTC+2 été / UTC+1 hiver)
+  workflow_dispatch:        # Déclenchement manuel depuis GitHub UI
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   generate:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
 
     steps:
       - name: Checkout
@@ -31,11 +40,11 @@ jobs:
       - name: Generate page
         run: python src/generate_page.py
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./output
-          publish_branch: gh-pages
-          commit_message: "chore: update weekly menu [skip ci]"
-          force_orphan: false
+          path: ./output
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
